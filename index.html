@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FireSign Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; width: 100vw; height: 100vh; overflow: hidden; cursor: none; font-family: sans-serif; }
+  #player { position: fixed; inset: 0; background: #000; }
+  #media-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+  #media-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; animation: fadeIn 0.6s ease; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  #telop-wrap { position: fixed; left: 0; right: 0; height: 52px; background: rgba(0,0,0,0.75); border-top: 2px solid #ff6b35; display: none; align-items: center; overflow: hidden; z-index: 100; }
+  #telop-text { white-space: nowrap; color: #fff; font-size: 26px; font-weight: 600; will-change: transform; }
+  #osd { position: fixed; top: 16px; right: 20px; background: rgba(0,0,0,0.6); color: #ff6b35; font-size: 13px; font-family: monospace; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,107,53,0.3); z-index: 200; line-height: 1.6; display: none; }
+  #loading { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 300; }
+  #loading .logo { font-size: 36px; color: #ff6b35; font-weight: 700; letter-spacing: 4px; margin-bottom: 24px; }
+  #loading .logo span { color: #fff; }
+  .spinner { width: 40px; height: 40px; border: 3px solid #222; border-top-color: #ff6b35; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  #loading .msg { color: #555; font-size: 13px; margin-top: 16px; font-family: monospace; }
+  #error-screen { position: fixed; inset: 0; background: #0a0000; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 400; color: #f87171; font-family: monospace; }
+  #error-screen .err-icon { font-size: 48px; margin-bottom: 16px; }
+  #error-screen .err-msg { font-size: 18px; margin-bottom: 8px; }
+  #error-screen .err-sub { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="logo">&#128293;Fire<span>Sign</span></div>
+  <div class="spinner"></div>
+  <div class="msg" id="loading-msg">設定ファイルを読み込み中...</div>
+</div>
+<div id="error-screen">
+  <div class="err-icon">&#9888;</div>
+  <div class="err-msg" id="error-msg">コンテンツを読み込めませんでした</div>
+  <div class="err-sub" id="error-sub">10秒後に再試行します</div>
+</div>
+<div id="player">
+  <video id="media-video" playsinline autoplay muted></video>
+  <img id="media-image" alt="">
+</div>
+<div id="telop-wrap"><div id="telop-text"></div></div>
+<div id="osd"></div>
+<script>
+// =============================================================
+//  FireSign Player v0.2.0
+//  ★ FIRESIGN_SETTINGS の apiKey だけ書き換えてください
+// =============================================================
+const FIRESIGN_SETTINGS = {
+  driveFolderId: '1PYLYwXCaEsP1v0GNHAk6DLVtWtLjk5HL',
+  apiKey: 'AIzaSyAClxeMFbBhLilHVTIOvWJPV7p9Cqy8vog',
+  reloadInterval: 60
+};
+
+const FALLBACK_CONFIG = {
+  screenIndex: 0,
+  telop: { enabled: true, text: '&#128293; FireSign 起動中...', speed: 60, bgColor: 'rgba(0,0,0,0.75)', textColor: '#ffffff', fontSize: 26, position: 'bottom' },
+  playlist: [
+    { type: 'image', url: 'https://picsum.photos/seed/firesign1/1920/1080', duration: 5 },
+    { type: 'image', url: 'https://picsum.photos/seed/firesign2/1920/1080', duration: 5 }
+  ],
+  loop: true, errorRetry: 10, videoObjectFit: 'contain'
+};
+
+let CONFIG = null;
+
+async function fetchConfigFromDrive() {
+  const { driveFolderId, apiKey } = FIRESIGN_SETTINGS;
+  const q = encodeURIComponent("'" + driveFolderId + "' in parents and name='config.json' and trashed=false");
+  const searchRes = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)&key=' + apiKey);
+  if (!searchRes.ok) throw new Error('Drive API ' + searchRes.status);
+  const data = await searchRes.json();
+  if (!data.files || data.files.length === 0) throw new Error('config.json not found');
+  const fileRes = await fetch('https://www.googleapis.com/drive/v3/files/' + data.files[0].id + '?alt=media&key=' + apiKey);
+  if (!fileRes.ok) throw new Error('file fetch ' + fileRes.status);
+  return await fileRes.json();
+}
+
+const video = document.getElementById('media-video');
+const image = document.getElementById('media-image');
+const telopWrap = document.getElementById('telop-wrap');
+const telopText = document.getElementById('telop-text');
+const loadingEl = document.getElementById('loading');
+const loadingMsg = document.getElementById('loading-msg');
+const errorScreen = document.getElementById('error-screen');
+const errorMsg = document.getElementById('error-msg');
+const errorSub = document.getElementById('error-sub');
+const osd = document.getElementById('osd');
+
+let currentIndex = 0, telopAnim = null, telopPos = 0, lastTelopTime = null;
+let osdVisible = false, retryTimer = null, playing = false;
+
+function initTelop() {
+  const t = CONFIG.telop;
+  if (!t || !t.enabled) { telopWrap.style.display = 'none'; return; }
+  telopWrap.style.display = 'flex';
+  telopWrap.style.background = t.bgColor || 'rgba(0,0,0,0.75)';
+  telopWrap.style.bottom = t.position === 'top' ? 'auto' : '0';
+  telopWrap.style.top = t.position === 'top' ? '0' : 'auto';
+  telopText.style.color = t.textColor || '#fff';
+  telopText.style.fontSize = (t.fontSize || 26) + 'px';
+  telopText.textContent = t.text || '';
+  telopPos = window.innerWidth;
+  if (telopAnim) cancelAnimationFrame(telopAnim);
+  lastTelopTime = null;
+  function tick(ts) {
+    if (lastTelopTime === null) lastTelopTime = ts;
+    telopPos -= (t.speed || 60) * (ts - lastTelopTime) / 1000;
+    lastTelopTime = ts;
+    if (telopPos < -telopText.offsetWidth) telopPos = window.innerWidth;
+    telopText.style.transform = 'translateX(' + telopPos + 'px)';
+    telopAnim = requestAnimationFrame(tick);
+  }
+  telopAnim = requestAnimationFrame(tick);
+}
+
+function updateOSD() {
+  if (!osdVisible) return;
+  const item = CONFIG.playlist[currentIndex];
+  osd.innerHTML = '<b>FireSign</b> v0.2.0<br>Screen: #' + (CONFIG.screenIndex||0) + '<br>Item: ' + (currentIndex+1) + ' / ' + CONFIG.playlist.length + '<br>Type: ' + (item?item.type:'') + '<br>Drive: ' + FIRESIGN_SETTINGS.driveFolderId.slice(0,12) + '...';
+}
+
+function showError(msg, retryFn) {
+  loadingEl.style.display = 'none';
+  errorScreen.style.display = 'flex';
+  errorMsg.textContent = msg;
+  let n = CONFIG ? (CONFIG.errorRetry || 10) : 10;
+  errorSub.textContent = n + '秒後に再試行します';
+  if (retryTimer) clearInterval(retryTimer);
+  retryTimer = setInterval(function() {
+    n--; errorSub.textContent = n + '秒後に再試行します';
+    if (n <= 0) { clearInterval(retryTimer); errorScreen.style.display = 'none'; retryFn(); }
+  }, 1000);
+}
+
+function nextItem() {
+  currentIndex = (currentIndex + 1) % CONFIG.playlist.length;
+  playItem(currentIndex);
+}
+
+function playItem(index) {
+  const item = CONFIG.playlist[index];
+  if (!item) return;
+  updateOSD();
+  if (item.type === 'video') {
+    image.style.display = 'none';
+    video.style.display = 'block';
+    video.style.objectFit = CONFIG.videoObjectFit || 'contain';
+    video.src = item.url; video.load();
+    video.play().catch(function() { video.muted = true; video.play().catch(function() { nextItem(); }); });
+    video.onended = nextItem;
+    video.onerror = function() { showError('動画読み込み失敗', function() { playItem(index); }); };
+  } else {
+    video.style.display = 'none'; video.pause(); video.src = '';
+    var img = new Image();
+    img.onload = function() {
+      image.src = item.url; image.style.display = 'block';
+      image.style.animation = 'none'; void image.offsetWidth; image.style.animation = 'fadeIn 0.6s ease';
+      setTimeout(nextItem, (item.duration || 5) * 1000);
+    };
+    img.onerror = function() { showError('画像読み込み失敗', function() { playItem(index); }); };
+    img.src = item.url;
+  }
+}
+
+function applyConfigAndPlay(cfg) {
+  CONFIG = cfg;
+  loadingEl.style.display = 'none';
+  if (!playing) { playing = true; initTelop(); playItem(0); }
+  else initTelop();
+}
+
+async function loadAndStart() {
+  loadingMsg.textContent = 'Google Drive から config.json を読み込み中...';
+  try {
+    applyConfigAndPlay(await fetchConfigFromDrive());
+  } catch(e) {
+    console.warn('Drive load failed:', e.message);
+    loadingMsg.textContent = 'フォールバック設定で起動...';
+    setTimeout(function() { applyConfigAndPlay(FALLBACK_CONFIG); }, 1000);
+  }
+  if (FIRESIGN_SETTINGS.reloadInterval > 0) {
+    setInterval(async function() {
+      try { const cfg = await fetchConfigFromDrive(); CONFIG = cfg; initTelop(); }
+      catch(e) { console.warn('reload failed:', e.message); }
+    }, FIRESIGN_SETTINGS.reloadInterval * 1000);
+  }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key==='d'||e.key==='D') { osdVisible=!osdVisible; osd.style.display=osdVisible?'block':'none'; updateOSD(); }
+  else if (e.key==='ArrowRight') { if(retryTimer)clearInterval(retryTimer); errorScreen.style.display='none'; nextItem(); }
+  else if (e.key==='ArrowLeft') { currentIndex=Math.max(0,currentIndex-2); nextItem(); }
+  else if (e.key==='t'||e.key==='T') { telopWrap.style.display=telopWrap.style.display==='none'?'flex':'none'; }
+  else if (e.key==='f'||e.key==='F') { if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen(); }
+  else if (e.key==='r'||e.key==='R') { loadAndStart(); }
+});
+document.addEventListener('click', function() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+});
+
+loadAndStart();
+</script>
+</body>
+</html>
