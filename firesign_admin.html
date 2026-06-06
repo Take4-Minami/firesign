@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FireSign 管理画面</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #23263a;
+  --border: #2e3148; --orange: #ff6b35; --odim: rgba(255,107,53,0.15);
+  --green: #3ddc97; --red: #f87171; --text: #e2e4ef; --dim: #6b7194; --muted: #3d4060;
+  --mono: 'IBM Plex Mono', monospace; --sans: 'Noto Sans JP', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+/* Header */
+.header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 28px; height: 56px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+.logo { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--orange); letter-spacing: 2px; }
+.logo span { color: #fff; }
+.header-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.header-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+
+/* Buttons */
+.btn { border: none; border-radius: 7px; padding: 9px 18px; font-family: var(--mono); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s; letter-spacing: .5px; }
+.btn-primary { background: var(--orange); color: #fff; box-shadow: 0 0 18px rgba(255,107,53,.3); }
+.btn-primary:hover { background: #e85525; }
+.btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg3); color: var(--text); }
+.btn-danger { background: transparent; color: var(--red); border: 1px solid rgba(248,113,113,.3); padding: 5px 10px; font-size: 11px; }
+.btn-danger:hover { background: rgba(248,113,113,.1); }
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn-icon { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--bg3); border: 1px solid var(--border); color: var(--dim); cursor: pointer; font-size: 14px; transition: all .15s; }
+.btn-icon:hover { background: var(--border); color: var(--text); }
+
+/* Layout */
+.container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+
+/* Section card */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.card-title { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--orange); letter-spacing: 1px; text-transform: uppercase; }
+.card-body { padding: 20px; }
+
+/* Form elements */
+.field { margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+.label { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-bottom: 6px; display: block; letter-spacing: .5px; }
+.input, .textarea, .select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 7px; padding: 9px 12px; color: var(--text);
+  font-family: var(--sans); font-size: 13px; outline: none; transition: border-color .15s;
+}
+.input:focus, .textarea:focus, .select:focus { border-color: var(--orange); }
+.textarea { resize: vertical; min-height: 72px; line-height: 1.6; }
+.select { cursor: pointer; }
+.input-row { display: flex; gap: 10px; align-items: flex-end; }
+.input-row .field { flex: 1; margin-bottom: 0; }
+
+/* Toggle */
+.toggle-row { display: flex; align-items: center; gap: 10px; }
+.toggle { width: 40px; height: 22px; border-radius: 11px; background: var(--border); cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; border: none; }
+.toggle.on { background: var(--orange); box-shadow: 0 0 10px rgba(255,107,53,.4); }
+.toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: left .2s; }
+.toggle.on::after { left: 21px; }
+.toggle-label { font-size: 13px; color: var(--text); }
+
+/* Playlist */
+.playlist-wrap { display: flex; flex-direction: column; gap: 8px; }
+.playlist-item {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+  transition: border-color .15s;
+}
+.playlist-item:hover { border-color: var(--orange); }
+.drag-handle { cursor: grab; color: var(--muted); font-size: 16px; user-select: none; flex-shrink: 0; }
+.drag-handle:active { cursor: grabbing; }
+.item-type-badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  padding: 3px 7px; border-radius: 4px; flex-shrink: 0; letter-spacing: .5px;
+}
+.badge-image { background: rgba(61,220,151,.15); color: var(--green); border: 1px solid rgba(61,220,151,.3); }
+.badge-video { background: rgba(74,158,255,.15); color: #4a9eff; border: 1px solid rgba(74,158,255,.3); }
+.item-url { flex: 1; font-size: 11px; color: var(--dim); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-dur { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+/* Add item form */
+.add-form { background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 14px; margin-top: 10px; }
+.add-form-title { font-size: 11px; color: var(--dim); margin-bottom: 12px; font-family: var(--mono); }
+
+/* Save bar */
+.save-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg2); border-top: 1px solid var(--border);
+  padding: 14px 28px; display: flex; align-items: center; gap: 14px;
+  z-index: 100;
+}
+.save-hint { font-size: 12px; color: var(--dim); flex: 1; }
+.save-hint strong { color: var(--orange); }
+
+/* Toast */
+.toast {
+  position: fixed; top: 72px; right: 24px;
+  background: var(--bg2); border: 1px solid var(--green);
+  color: var(--green); border-radius: 8px; padding: 10px 18px;
+  font-family: var(--mono); font-size: 12px;
+  opacity: 0; transform: translateY(-8px);
+  transition: all .3s; pointer-events: none; z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* Drag over */
+.playlist-item.drag-over { border-color: var(--orange); background: var(--odim); }
+
+/* Step badge */
+.step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--orange); color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 700; flex-shrink: 0; }
+
+/* How-to */
+.howto { background: var(--odim); border: 1px solid rgba(255,107,53,.2); border-radius: 8px; padding: 14px 16px; font-size: 12px; color: var(--dim); line-height: 1.8; }
+.howto b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">&#128293;Fire<span>Sign</span></div>
+  <div class="header-sub">設定管理画面 v1.0</div>
+  <div class="header-right">
+    <button class="btn btn-ghost btn-sm" onclick="loadFromDrive()">&#9729; Driveから読込</button>
+    <button class="btn btn-primary" onclick="saveConfig()">&#8595; config.json を保存</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="container">
+
+  <!-- How to use -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#128161; 使い方</div>
+    </div>
+    <div class="card-body">
+      <div class="howto">
+        <b><span class="step">1</span></b> &nbsp;この画面で設定を編集する<br>
+        <b><span class="step">2</span></b> &nbsp;「<b>config.json を保存</b>」ボタンを押してファイルをダウンロードする<br>
+        <b><span class="step">3</span></b> &nbsp;ダウンロードした <b>config.json</b> を Google Drive の <b>firesign フォルダ</b>にドラッグして上書きする<br>
+        <b><span class="step">4</span></b> &nbsp;プレーヤーが自動的に新しい設定を読み込みます（最大60秒）
+      </div>
+    </div>
+  </div>
+
+  <!-- Telop -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#128218; テロップ設定</div>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <div class="toggle-row">
+          <button class="toggle on" id="telopToggle" onclick="toggleTelop()"></button>
+          <span class="toggle-label" id="telopToggleLabel">テロップ表示 ON</span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">テロップ文章</label>
+        <textarea class="textarea" id="telopText" rows="3" placeholder="ここにテロップのテキストを入力...">&#127973; 本日の外来受付は17:00までです。休診日: 毎週木曜・日曜・祝日。　　お問い合わせ: 03-XXXX-XXXX　　</textarea>
+      </div>
+      <div class="input-row">
+        <div class="field">
+          <label class="label">スクロール速度（px/秒）</label>
+          <input class="input" type="number" id="telopSpeed" value="80" min="10" max="300">
+        </div>
+        <div class="field">
+          <label class="label">表示位置</label>
+          <select class="select" id="telopPos">
+            <option value="bottom">下部</option>
+            <option value="top">上部</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label">文字サイズ（px）</label>
+          <input class="input" type="number" id="telopFontSize" value="26" min="14" max="60">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Playlist -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#127916; プレイリスト</div>
+      <span style="font-size:11px;color:var(--dim);margin-left:auto;">ドラッグで並び替え可能</span>
+    </div>
+    <div class="card-body">
+      <div class="playlist-wrap" id="playlistWrap">
+        <!-- items injected by JS -->
+      </div>
+
+      <!-- Add item -->
+      <div class="add-form" id="addForm">
+        <div class="add-form-title">&#43; 新しいコンテンツを追加</div>
+        <div class="input-row" style="margin-bottom:10px;">
+          <div class="field">
+            <label class="label">種類</label>
+            <select class="select" id="newType" onchange="onTypeChange()">
+              <option value="image">画像（jpg / png）</option>
+              <option value="video">動画（mp4）</option>
+            </select>
+          </div>
+          <div class="field" id="durField">
+            <label class="label">表示秒数（画像のみ）</label>
+            <input class="input" type="number" id="newDur" value="5" min="1" max="300">
+          </div>
+        </div>
+        <div class="field">
+          <label class="label">URL（Google Drive 直リンク または 外部URL）</label>
+          <input class="input" type="text" id="newUrl" placeholder="https://drive.google.com/uc?export=download&id=FILE_ID">
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--muted);">
+          Google Drive: 共有リンクの <code style="color:var(--dim);">FILE_ID</code> 部分を使って
+          <code style="color:var(--orange);">https://drive.google.com/uc?export=download&id=FILE_ID</code> の形式で入力
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:12px;" onclick="addItem()">&#43; 追加する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Advanced -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#9881; 詳細設定</div>
+    </div>
+    <div class="card-body">
+      <div class="input-row">
+        <div class="field">
+          <label class="label">動画の表示方法</label>
+          <select class="select" id="videoFit">
+            <option value="contain">contain（黒帯あり・歪みなし）</option>
+            <option value="cover">cover（トリミング・全画面）</option>
+            <option value="fill">fill（引き伸ばし）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label">エラー時リトライ秒数</label>
+          <input class="input" type="number" id="errorRetry" value="10" min="3" max="60">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JSON preview -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#128196; JSON プレビュー</div>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">読み取り専用</span>
+    </div>
+    <div class="card-body">
+      <pre id="jsonPreview" style="font-family:var(--mono);font-size:11px;color:var(--dim);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:14px;overflow-x:auto;white-space:pre-wrap;line-height:1.7;"></pre>
+    </div>
+  </div>
+
+</div>
+
+<!-- Save bar -->
+<div class="save-bar">
+  <div class="save-hint">設定を変更したら <strong>「config.json を保存」</strong> → Google Drive の firesign フォルダに上書きアップロード</div>
+  <button class="btn btn-ghost btn-sm" onclick="loadFromDrive()">&#9729; Driveから読込</button>
+  <button class="btn btn-primary" onclick="saveConfig()">&#8595; config.json を保存</button>
+</div>
+
+<script>
+// =============================================================
+//  FireSign Admin  v1.0
+//  ★ Drive設定（プレーヤーと同じ値を入れてください）
+// =============================================================
+const DRIVE_SETTINGS = {
+  folderId: '1PYLYwXCaEsP1v0GNHAk6DLVtWtLjk5HL',
+  apiKey:   'AIzaSyAClxeMFbBhLilHVTIOvWJPV7p9Cqy8vog'
+};
+
+// =============================================================
+//  State
+// =============================================================
+let playlist = [
+  { type: 'image', url: 'https://picsum.photos/seed/firesign1/1920/1080', duration: 5 },
+  { type: 'image', url: 'https://picsum.photos/seed/firesign2/1920/1080', duration: 5 },
+];
+let telopEnabled = true;
+let dragSrc = null;
+
+// =============================================================
+//  Build config object from UI
+// =============================================================
+function buildConfig() {
+  return {
+    screenIndex: 0,
+    telop: {
+      enabled:   telopEnabled,
+      text:      document.getElementById('telopText').value,
+      speed:     parseInt(document.getElementById('telopSpeed').value) || 80,
+      position:  document.getElementById('telopPos').value,
+      fontSize:  parseInt(document.getElementById('telopFontSize').value) || 26,
+      bgColor:   'rgba(0,0,0,0.75)',
+      textColor: '#ffffff'
+    },
+    playlist: playlist,
+    loop:           true,
+    errorRetry:     parseInt(document.getElementById('errorRetry').value) || 10,
+    videoObjectFit: document.getElementById('videoFit').value
+  };
+}
+
+// =============================================================
+//  JSON preview
+// =============================================================
+function updatePreview() {
+  const cfg = buildConfig();
+  document.getElementById('jsonPreview').textContent = JSON.stringify(cfg, null, 2);
+}
+
+// =============================================================
+//  Playlist rendering
+// =============================================================
+function renderPlaylist() {
+  const wrap = document.getElementById('playlistWrap');
+  wrap.innerHTML = '';
+  if (playlist.length === 0) {
+    wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">プレイリストが空です。下のフォームからコンテンツを追加してください。</div>';
+    updatePreview(); return;
+  }
+  playlist.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'playlist-item';
+    div.draggable = true;
+    div.dataset.idx = i;
+
+    const fname = item.url.split('/').pop().split('?')[0] || item.url;
+    const shortUrl = item.url.length > 52 ? item.url.slice(0, 50) + '...' : item.url;
+    const durText = item.type === 'image' ? (item.duration || 5) + '秒' : '動画';
+
+    div.innerHTML =
+      '<span class="drag-handle" title="ドラッグして並び替え">&#8597;</span>' +
+      '<span class="item-type-badge ' + (item.type === 'video' ? 'badge-video' : 'badge-image') + '">' +
+        (item.type === 'video' ? 'VIDEO' : 'IMAGE') +
+      '</span>' +
+      '<span class="item-url" title="' + item.url + '">' + shortUrl + '</span>' +
+      '<span class="item-dur">' + durText + '</span>' +
+      '<button class="btn-danger btn" onclick="removeItem(' + i + ')" title="削除">&#10005;</button>';
+
+    // Drag events
+    div.addEventListener('dragstart', function(e) {
+      dragSrc = i;
+      setTimeout(function() { div.style.opacity = '0.4'; }, 0);
+    });
+    div.addEventListener('dragend', function() { div.style.opacity = '1'; });
+    div.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      div.classList.add('drag-over');
+    });
+    div.addEventListener('dragleave', function() { div.classList.remove('drag-over'); });
+    div.addEventListener('drop', function(e) {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      if (dragSrc === null || dragSrc === i) return;
+      const moved = playlist.splice(dragSrc, 1)[0];
+      playlist.splice(i, 0, moved);
+      dragSrc = null;
+      renderPlaylist();
+    });
+
+    wrap.appendChild(div);
+  });
+  updatePreview();
+}
+
+function removeItem(i) {
+  if (!confirm((i+1) + '番目のアイテムを削除しますか？')) return;
+  playlist.splice(i, 1);
+  renderPlaylist();
+}
+
+function addItem() {
+  const type = document.getElementById('newType').value;
+  const url  = document.getElementById('newUrl').value.trim();
+  const dur  = parseInt(document.getElementById('newDur').value) || 5;
+  if (!url) { showToast('URLを入力してください', true); return; }
+  playlist.push({ type, url, duration: type === 'image' ? dur : null });
+  document.getElementById('newUrl').value = '';
+  renderPlaylist();
+  showToast('追加しました');
+}
+
+function onTypeChange() {
+  const isImage = document.getElementById('newType').value === 'image';
+  document.getElementById('durField').style.opacity = isImage ? '1' : '0.3';
+  document.getElementById('newDur').disabled = !isImage;
+}
+
+// =============================================================
+//  Telop toggle
+// =============================================================
+function toggleTelop() {
+  telopEnabled = !telopEnabled;
+  const btn = document.getElementById('telopToggle');
+  const lbl = document.getElementById('telopToggleLabel');
+  btn.classList.toggle('on', telopEnabled);
+  lbl.textContent = 'テロップ表示 ' + (telopEnabled ? 'ON' : 'OFF');
+  updatePreview();
+}
+
+// =============================================================
+//  Save: download config.json
+// =============================================================
+function saveConfig() {
+  const cfg = buildConfig();
+  const json = JSON.stringify(cfg, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'config.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('config.json をダウンロードしました。Google Drive の firesign フォルダに上書きしてください。');
+}
+
+// =============================================================
+//  Load from Drive
+// =============================================================
+async function loadFromDrive() {
+  showToast('Google Drive から読み込み中...');
+  try {
+    const { folderId, apiKey } = DRIVE_SETTINGS;
+    const q = encodeURIComponent("'" + folderId + "' in parents and name='config.json' and trashed=false");
+    const res = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)&key=' + apiKey);
+    const data = await res.json();
+    if (!data.files || data.files.length === 0) { showToast('config.json が見つかりません', true); return; }
+    const fres = await fetch('https://www.googleapis.com/drive/v3/files/' + data.files[0].id + '?alt=media&key=' + apiKey);
+    const cfg = await fres.json();
+    applyConfig(cfg);
+    showToast('Drive から読み込みました');
+  } catch(e) {
+    showToast('読み込み失敗: ' + e.message, true);
+  }
+}
+
+function applyConfig(cfg) {
+  if (cfg.telop) {
+    telopEnabled = cfg.telop.enabled !== false;
+    document.getElementById('telopText').value     = cfg.telop.text || '';
+    document.getElementById('telopSpeed').value    = cfg.telop.speed || 80;
+    document.getElementById('telopPos').value      = cfg.telop.position || 'bottom';
+    document.getElementById('telopFontSize').value = cfg.telop.fontSize || 26;
+    document.getElementById('telopToggle').classList.toggle('on', telopEnabled);
+    document.getElementById('telopToggleLabel').textContent = 'テロップ表示 ' + (telopEnabled ? 'ON' : 'OFF');
+  }
+  if (cfg.playlist) playlist = cfg.playlist;
+  if (cfg.videoObjectFit) document.getElementById('videoFit').value = cfg.videoObjectFit;
+  if (cfg.errorRetry) document.getElementById('errorRetry').value = cfg.errorRetry;
+  renderPlaylist();
+}
+
+// =============================================================
+//  Toast notification
+// =============================================================
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = isError ? 'var(--red)' : 'var(--green)';
+  t.style.color = isError ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 3500);
+}
+
+// Live preview update
+['telopText','telopSpeed','telopPos','telopFontSize','videoFit','errorRetry'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', updatePreview);
+});
+
+// Init
+renderPlaylist();
+</script>
+</body>
+</html>
