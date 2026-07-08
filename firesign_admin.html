@@ -80,10 +80,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   font-family: var(--mono); font-size: 9px; font-weight: 700;
   padding: 3px 7px; border-radius: 4px; flex-shrink: 0; letter-spacing: .5px;
 }
-.badge-image { background: rgba(61,220,151,.15); color: var(--green); border: 1px solid rgba(61,220,151,.3); }
 .badge-video { background: rgba(74,158,255,.15); color: #4a9eff; border: 1px solid rgba(74,158,255,.3); }
 .item-url { flex: 1; font-size: 11px; color: var(--dim); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item-dur { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; }
 
 /* Add item form */
 .add-form { background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 14px; margin-top: 10px; }
@@ -119,13 +117,34 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 /* How-to */
 .howto { background: var(--odim); border: 1px solid rgba(255,107,53,.2); border-radius: 8px; padding: 14px 16px; font-size: 12px; color: var(--dim); line-height: 1.8; }
 .howto b { color: var(--text); }
+
+/* Layout picker */
+.layout-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.layout-opt {
+  background: var(--bg3); border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 10px; cursor: pointer; text-align: center; transition: all .15s;
+}
+.layout-opt:hover { border-color: rgba(255,107,53,.5); }
+.layout-opt.selected { border-color: var(--orange); background: var(--odim); }
+.layout-preview { width: 100%; height: 44px; display: grid; gap: 2px; margin-bottom: 8px; }
+.layout-preview .cell { background: var(--muted); border-radius: 2px; }
+.layout-opt.selected .layout-preview .cell { background: var(--orange); }
+.layout-opt-label { font-size: 10px; color: var(--dim); font-family: var(--mono); }
+.layout-opt.selected .layout-opt-label { color: var(--text); }
+
+/* Zone card */
+.zone-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.zone-card:last-child { margin-bottom: 0; }
+.zone-card-title { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--orange); margin-bottom: 12px; letter-spacing: .5px; }
+.zone-hint { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 8px; }
+.zone-hint code { color: var(--orange); background: rgba(255,107,53,.1); padding: 1px 5px; border-radius: 3px; }
 </style>
 </head>
 <body>
 
 <div class="header">
   <div class="logo">&#128293;Fire<span>Sign</span></div>
-  <div class="header-sub">設定管理画面 v1.0</div>
+  <div class="header-sub">設定管理画面 v2.0</div>
   <div class="header-right">
     <button class="btn btn-ghost btn-sm" onclick="loadFromDrive()">&#9729; Driveから読込</button>
     <button class="btn btn-primary" onclick="saveConfig()">&#8595; config.json を保存</button>
@@ -143,18 +162,40 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     </div>
     <div class="card-body">
       <div class="howto">
-        <b><span class="step">1</span></b> &nbsp;この画面で設定を編集する<br>
-        <b><span class="step">2</span></b> &nbsp;「<b>config.json を保存</b>」ボタンを押してファイルをダウンロードする<br>
-        <b><span class="step">3</span></b> &nbsp;ダウンロードした <b>config.json</b> を Google Drive の <b>firesign フォルダ</b>にドラッグして上書きする<br>
-        <b><span class="step">4</span></b> &nbsp;プレーヤーが自動的に新しい設定を読み込みます（最大60秒）
+        <b><span class="step">1</span></b> &nbsp;画面レイアウトを選ぶ<br>
+        <b><span class="step">2</span></b> &nbsp;各ゾーンの動画（YouTube限定公開URL）や設定を編集する<br>
+        <b><span class="step">3</span></b> &nbsp;画像は Google Drive の firesign フォルダに <b>ゾーンID_ファイル名</b>（例: <code style="color:var(--orange)">main_01.jpg</code>）でアップロードすると自動的にファイル名順で再生されます<br>
+        <b><span class="step">4</span></b> &nbsp;「<b>config.json を保存</b>」→ ダウンロードした config.json を Drive の firesign フォルダに上書きアップロード<br>
+        <b><span class="step">5</span></b> &nbsp;プレーヤーが自動的に新しい設定を読み込みます（最大60秒）
       </div>
+    </div>
+  </div>
+
+  <!-- Layout -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#128230; 画面レイアウト</div>
+    </div>
+    <div class="card-body">
+      <div class="layout-grid" id="layoutGrid"></div>
+    </div>
+  </div>
+
+  <!-- Zones -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">&#127916; ゾーン設定</div>
+      <span style="font-size:11px;color:var(--dim);margin-left:auto;">画像はDriveスキャン、動画は手動登録</span>
+    </div>
+    <div class="card-body" id="zonesWrap">
+      <!-- zone cards injected by JS -->
     </div>
   </div>
 
   <!-- Telop -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">&#128218; テロップ設定</div>
+      <div class="card-title">&#128218; テロップ設定（画面全体に表示）</div>
     </div>
     <div class="card-body">
       <div class="field">
@@ -187,65 +228,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     </div>
   </div>
 
-  <!-- Playlist -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">&#127916; プレイリスト</div>
-      <span style="font-size:11px;color:var(--dim);margin-left:auto;">ドラッグで並び替え可能</span>
-    </div>
-    <div class="card-body">
-      <div class="playlist-wrap" id="playlistWrap">
-        <!-- items injected by JS -->
-      </div>
-
-      <!-- Add item -->
-      <div class="add-form" id="addForm">
-        <div class="add-form-title">&#43; 新しいコンテンツを追加</div>
-        <div class="input-row" style="margin-bottom:10px;">
-          <div class="field">
-            <label class="label">種類</label>
-            <select class="select" id="newType" onchange="onTypeChange()">
-              <option value="image">画像（jpg / png）</option>
-              <option value="video">動画（mp4）</option>
-            </select>
-          </div>
-          <div class="field" id="durField">
-            <label class="label">表示秒数（画像のみ）</label>
-            <input class="input" type="number" id="newDur" value="5" min="1" max="300">
-          </div>
-        </div>
-        <div class="field">
-          <label class="label">URL（Google Drive 直リンク または 外部URL）</label>
-          <input class="input" type="text" id="newUrl" placeholder="https://drive.google.com/uc?export=download&id=FILE_ID">
-        </div>
-        <div style="margin-top:4px;font-size:11px;color:var(--muted);">
-          Google Drive: 共有リンクの <code style="color:var(--dim);">FILE_ID</code> 部分を使って
-          <code style="color:var(--orange);">https://drive.google.com/uc?export=download&id=FILE_ID</code> の形式で入力
-        </div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:12px;" onclick="addItem()">&#43; 追加する</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Advanced -->
   <div class="card">
     <div class="card-header">
       <div class="card-title">&#9881; 詳細設定</div>
     </div>
     <div class="card-body">
-      <div class="input-row">
-        <div class="field">
-          <label class="label">動画の表示方法</label>
-          <select class="select" id="videoFit">
-            <option value="contain">contain（黒帯あり・歪みなし）</option>
-            <option value="cover">cover（トリミング・全画面）</option>
-            <option value="fill">fill（引き伸ばし）</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="label">エラー時リトライ秒数</label>
-          <input class="input" type="number" id="errorRetry" value="10" min="3" max="60">
-        </div>
+      <div class="field">
+        <label class="label">エラー時リトライ秒数</label>
+        <input class="input" type="number" id="errorRetry" value="10" min="3" max="60" style="max-width:200px;">
       </div>
     </div>
   </div>
@@ -272,7 +263,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <script>
 // =============================================================
-//  FireSign Admin  v1.0
+//  FireSign Admin  v2.0 — マルチゾーンレイアウト対応
 //  ★ Drive設定（プレーヤーと同じ値を入れてください）
 // =============================================================
 const DRIVE_SETTINGS = {
@@ -280,21 +271,195 @@ const DRIVE_SETTINGS = {
   apiKey:   'AIzaSyAClxeMFbBhLilHVTIOvWJPV7p9Cqy8vog'
 };
 
+// レイアウト定義: id, ラベル, ゾーンID一覧, プレビュー用グリッド
+const LAYOUTS = [
+  { id: 'full',         label: '全画面',       zones: ['main'],                          cols: 1, rows: 1, areas: [[1]] },
+  { id: 'main-bottom',  label: 'メイン+下帯',  zones: ['main', 'bottom'],                cols: 1, rows: 5, areas: [[1],[1],[1],[1],[2]] },
+  { id: 'main-top',     label: '上帯+メイン',  zones: ['top', 'main'],                   cols: 1, rows: 5, areas: [[1],[2],[2],[2],[2]] },
+  { id: 'split-lr',     label: '左右分割',     zones: ['left', 'right'],                 cols: 2, rows: 1, areas: [[1,2]] },
+  { id: 'split-tb',     label: '上下分割',     zones: ['top', 'bottom'],                 cols: 1, rows: 2, areas: [[1],[2]] },
+  { id: 'main-sidebar', label: 'メイン+サイド', zones: ['main', 'sidebar'],              cols: 4, rows: 1, areas: [[1,1,1,2]] },
+  { id: 'grid-4',       label: '4分割',        zones: ['grid1','grid2','grid3','grid4'], cols: 2, rows: 2, areas: [[1,2],[3,4]] }
+];
+
+const ZONE_LABELS = {
+  main: 'メイン', bottom: '下帯', top: '上帯', left: '左', right: '右',
+  sidebar: 'サイドバー', grid1: '左上', grid2: '右上', grid3: '左下', grid4: '右下'
+};
+
 // =============================================================
 //  State
 // =============================================================
-let playlist = [
-  { type: 'image', url: 'https://picsum.photos/seed/firesign1/1920/1080', duration: 5 },
-  { type: 'image', url: 'https://picsum.photos/seed/firesign2/1920/1080', duration: 5 },
-];
+let currentLayoutId = 'full';
+// zonesData[zoneId] = { imageDuration: 5, videos: [{url}] }
+let zonesData = { main: { imageDuration: 5, videos: [] } };
 let telopEnabled = true;
-let dragSrc = null;
+let dragSrc = null; // { zoneId, index }
+
+function getLayout(id) { return LAYOUTS.find(l => l.id === id) || LAYOUTS[0]; }
+
+function ensureZoneData(zoneId) {
+  if (!zonesData[zoneId]) zonesData[zoneId] = { imageDuration: 5, videos: [] };
+  return zonesData[zoneId];
+}
+
+// =============================================================
+//  Layout picker
+// =============================================================
+function renderLayoutGrid() {
+  const grid = document.getElementById('layoutGrid');
+  grid.innerHTML = '';
+  LAYOUTS.forEach(l => {
+    const opt = document.createElement('div');
+    opt.className = 'layout-opt' + (l.id === currentLayoutId ? ' selected' : '');
+    opt.onclick = () => selectLayout(l.id);
+
+    const preview = document.createElement('div');
+    preview.className = 'layout-preview';
+    preview.style.gridTemplateColumns = 'repeat(' + l.cols + ', 1fr)';
+    preview.style.gridTemplateRows = 'repeat(' + l.rows + ', 1fr)';
+    const seen = new Set();
+    l.areas.forEach(row => {
+      row.forEach(cellNum => {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        preview.appendChild(cell);
+      });
+    });
+    opt.appendChild(preview);
+
+    const label = document.createElement('div');
+    label.className = 'layout-opt-label';
+    label.textContent = l.label;
+    opt.appendChild(label);
+
+    grid.appendChild(opt);
+  });
+}
+
+function selectLayout(id) {
+  currentLayoutId = id;
+  const layout = getLayout(id);
+  layout.zones.forEach(ensureZoneData);
+  renderLayoutGrid();
+  renderZones();
+  updatePreview();
+}
+
+// =============================================================
+//  Zone panels
+// =============================================================
+function renderZones() {
+  const wrap = document.getElementById('zonesWrap');
+  wrap.innerHTML = '';
+  const layout = getLayout(currentLayoutId);
+  layout.zones.forEach(zoneId => {
+    const zd = ensureZoneData(zoneId);
+    const card = document.createElement('div');
+    card.className = 'zone-card';
+
+    card.innerHTML =
+      '<div class="zone-card-title">&#9635; ' + (ZONE_LABELS[zoneId] || zoneId) + '（' + zoneId + '）</div>' +
+      '<div class="input-row" style="margin-bottom:12px;">' +
+        '<div class="field">' +
+          '<label class="label">画像の表示秒数</label>' +
+          '<input class="input" type="number" min="1" max="300" value="' + (zd.imageDuration || 5) + '" data-zone-dur="' + zoneId + '" style="max-width:160px;">' +
+        '</div>' +
+      '</div>' +
+      '<div class="playlist-wrap" id="zoneVideos-' + zoneId + '"></div>' +
+      '<div class="add-form">' +
+        '<div class="add-form-title">&#43; YouTube動画を追加（限定公開URL）</div>' +
+        '<div class="field" style="margin-bottom:8px;">' +
+          '<input class="input" type="text" id="newVideoUrl-' + zoneId + '" placeholder="https://youtu.be/XXXXXXXXXXX">' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm" onclick="addVideo(\'' + zoneId + '\')">&#43; 追加する</button>' +
+      '</div>' +
+      '<div class="zone-hint">画像はDriveの firesign フォルダに <code>' + zoneId + '_ファイル名.jpg</code> の形式でアップロードすると、ファイル名順に自動再生されます。</div>';
+
+    wrap.appendChild(card);
+
+    card.querySelector('[data-zone-dur]').addEventListener('input', (e) => {
+      zd.imageDuration = parseInt(e.target.value) || 5;
+      updatePreview();
+    });
+
+    renderZoneVideos(zoneId);
+  });
+}
+
+function renderZoneVideos(zoneId) {
+  const zd = ensureZoneData(zoneId);
+  const wrap = document.getElementById('zoneVideos-' + zoneId);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (zd.videos.length === 0) {
+    wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:14px;font-size:12px;">動画は未登録です。</div>';
+    return;
+  }
+  zd.videos.forEach((v, i) => {
+    const div = document.createElement('div');
+    div.className = 'playlist-item';
+    div.draggable = true;
+    div.dataset.idx = i;
+    const shortUrl = v.url.length > 52 ? v.url.slice(0, 50) + '...' : v.url;
+    div.innerHTML =
+      '<span class="drag-handle" title="ドラッグして並び替え">&#8597;</span>' +
+      '<span class="item-type-badge badge-video">VIDEO</span>' +
+      '<span class="item-url" title="' + v.url + '">' + shortUrl + '</span>' +
+      '<button class="btn-danger btn" onclick="removeVideo(\'' + zoneId + '\',' + i + ')" title="削除">&#10005;</button>';
+
+    div.addEventListener('dragstart', function() {
+      dragSrc = { zoneId, index: i };
+      setTimeout(function() { div.style.opacity = '0.4'; }, 0);
+    });
+    div.addEventListener('dragend', function() { div.style.opacity = '1'; });
+    div.addEventListener('dragover', function(e) { e.preventDefault(); div.classList.add('drag-over'); });
+    div.addEventListener('dragleave', function() { div.classList.remove('drag-over'); });
+    div.addEventListener('drop', function(e) {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      if (!dragSrc || dragSrc.zoneId !== zoneId || dragSrc.index === i) return;
+      const moved = zd.videos.splice(dragSrc.index, 1)[0];
+      zd.videos.splice(i, 0, moved);
+      dragSrc = null;
+      renderZoneVideos(zoneId);
+      updatePreview();
+    });
+
+    wrap.appendChild(div);
+  });
+}
+
+function addVideo(zoneId) {
+  const input = document.getElementById('newVideoUrl-' + zoneId);
+  const url = input.value.trim();
+  if (!url) { showToast('URLを入力してください', true); return; }
+  ensureZoneData(zoneId).videos.push({ url });
+  input.value = '';
+  renderZoneVideos(zoneId);
+  updatePreview();
+  showToast('追加しました');
+}
+
+function removeVideo(zoneId, i) {
+  if (!confirm('この動画を削除しますか？')) return;
+  ensureZoneData(zoneId).videos.splice(i, 1);
+  renderZoneVideos(zoneId);
+  updatePreview();
+}
 
 // =============================================================
 //  Build config object from UI
 // =============================================================
 function buildConfig() {
+  const layout = getLayout(currentLayoutId);
+  const zones = {};
+  layout.zones.forEach(zid => {
+    const zd = ensureZoneData(zid);
+    zones[zid] = { imageDuration: zd.imageDuration || 5, videos: zd.videos };
+  });
   return {
+    layout: currentLayoutId,
     screenIndex: 0,
     telop: {
       enabled:   telopEnabled,
@@ -305,97 +470,14 @@ function buildConfig() {
       bgColor:   'rgba(0,0,0,0.75)',
       textColor: '#ffffff'
     },
-    playlist: playlist,
-    loop:           true,
-    errorRetry:     parseInt(document.getElementById('errorRetry').value) || 10,
-    videoObjectFit: document.getElementById('videoFit').value
+    zones: zones,
+    loop: true,
+    errorRetry: parseInt(document.getElementById('errorRetry').value) || 10
   };
 }
 
-// =============================================================
-//  JSON preview
-// =============================================================
 function updatePreview() {
-  const cfg = buildConfig();
-  document.getElementById('jsonPreview').textContent = JSON.stringify(cfg, null, 2);
-}
-
-// =============================================================
-//  Playlist rendering
-// =============================================================
-function renderPlaylist() {
-  const wrap = document.getElementById('playlistWrap');
-  wrap.innerHTML = '';
-  if (playlist.length === 0) {
-    wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">プレイリストが空です。下のフォームからコンテンツを追加してください。</div>';
-    updatePreview(); return;
-  }
-  playlist.forEach((item, i) => {
-    const div = document.createElement('div');
-    div.className = 'playlist-item';
-    div.draggable = true;
-    div.dataset.idx = i;
-
-    const fname = item.url.split('/').pop().split('?')[0] || item.url;
-    const shortUrl = item.url.length > 52 ? item.url.slice(0, 50) + '...' : item.url;
-    const durText = item.type === 'image' ? (item.duration || 5) + '秒' : '動画';
-
-    div.innerHTML =
-      '<span class="drag-handle" title="ドラッグして並び替え">&#8597;</span>' +
-      '<span class="item-type-badge ' + (item.type === 'video' ? 'badge-video' : 'badge-image') + '">' +
-        (item.type === 'video' ? 'VIDEO' : 'IMAGE') +
-      '</span>' +
-      '<span class="item-url" title="' + item.url + '">' + shortUrl + '</span>' +
-      '<span class="item-dur">' + durText + '</span>' +
-      '<button class="btn-danger btn" onclick="removeItem(' + i + ')" title="削除">&#10005;</button>';
-
-    // Drag events
-    div.addEventListener('dragstart', function(e) {
-      dragSrc = i;
-      setTimeout(function() { div.style.opacity = '0.4'; }, 0);
-    });
-    div.addEventListener('dragend', function() { div.style.opacity = '1'; });
-    div.addEventListener('dragover', function(e) {
-      e.preventDefault();
-      div.classList.add('drag-over');
-    });
-    div.addEventListener('dragleave', function() { div.classList.remove('drag-over'); });
-    div.addEventListener('drop', function(e) {
-      e.preventDefault();
-      div.classList.remove('drag-over');
-      if (dragSrc === null || dragSrc === i) return;
-      const moved = playlist.splice(dragSrc, 1)[0];
-      playlist.splice(i, 0, moved);
-      dragSrc = null;
-      renderPlaylist();
-    });
-
-    wrap.appendChild(div);
-  });
-  updatePreview();
-}
-
-function removeItem(i) {
-  if (!confirm((i+1) + '番目のアイテムを削除しますか？')) return;
-  playlist.splice(i, 1);
-  renderPlaylist();
-}
-
-function addItem() {
-  const type = document.getElementById('newType').value;
-  const url  = document.getElementById('newUrl').value.trim();
-  const dur  = parseInt(document.getElementById('newDur').value) || 5;
-  if (!url) { showToast('URLを入力してください', true); return; }
-  playlist.push({ type, url, duration: type === 'image' ? dur : null });
-  document.getElementById('newUrl').value = '';
-  renderPlaylist();
-  showToast('追加しました');
-}
-
-function onTypeChange() {
-  const isImage = document.getElementById('newType').value === 'image';
-  document.getElementById('durField').style.opacity = isImage ? '1' : '0.3';
-  document.getElementById('newDur').disabled = !isImage;
+  document.getElementById('jsonPreview').textContent = JSON.stringify(buildConfig(), null, 2);
 }
 
 // =============================================================
@@ -455,10 +537,21 @@ function applyConfig(cfg) {
     document.getElementById('telopToggle').classList.toggle('on', telopEnabled);
     document.getElementById('telopToggleLabel').textContent = 'テロップ表示 ' + (telopEnabled ? 'ON' : 'OFF');
   }
-  if (cfg.playlist) playlist = cfg.playlist;
-  if (cfg.videoObjectFit) document.getElementById('videoFit').value = cfg.videoObjectFit;
   if (cfg.errorRetry) document.getElementById('errorRetry').value = cfg.errorRetry;
-  renderPlaylist();
+
+  currentLayoutId = (cfg.layout && getLayout(cfg.layout)) ? cfg.layout : 'full';
+  zonesData = {};
+  if (cfg.zones) {
+    Object.keys(cfg.zones).forEach(zid => {
+      const z = cfg.zones[zid];
+      zonesData[zid] = { imageDuration: z.imageDuration || 5, videos: (z.videos || []).map(v => ({ url: v.url })) };
+    });
+  }
+  getLayout(currentLayoutId).zones.forEach(ensureZoneData);
+
+  renderLayoutGrid();
+  renderZones();
+  updatePreview();
 }
 
 // =============================================================
@@ -474,12 +567,14 @@ function showToast(msg, isError) {
 }
 
 // Live preview update
-['telopText','telopSpeed','telopPos','telopFontSize','videoFit','errorRetry'].forEach(function(id) {
+['telopText','telopSpeed','telopPos','telopFontSize','errorRetry'].forEach(function(id) {
   document.getElementById(id).addEventListener('input', updatePreview);
 });
 
 // Init
-renderPlaylist();
+renderLayoutGrid();
+renderZones();
+updatePreview();
 </script>
 </body>
 </html>

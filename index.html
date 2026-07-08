@@ -7,13 +7,37 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; width: 100vw; height: 100vh; overflow: hidden; cursor: none; font-family: sans-serif; }
-  #player { position: fixed; inset: 0; background: #000; }
-  #media-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
-  #media-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; animation: fadeIn 0.6s ease; }
+  #player { position: fixed; inset: 0; background: #000; display: grid; }
+  /* --- layout patterns --- */
+  #player.layout-full { grid-template-areas: "main"; grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  #player.layout-main-bottom { grid-template-areas: "main" "bottom"; grid-template-columns: 1fr; grid-template-rows: 80% 20%; }
+  #player.layout-main-top { grid-template-areas: "top" "main"; grid-template-columns: 1fr; grid-template-rows: 20% 80%; }
+  #player.layout-split-lr { grid-template-areas: "left right"; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+  #player.layout-split-tb { grid-template-areas: "top" "bottom"; grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  #player.layout-main-sidebar { grid-template-areas: "main sidebar"; grid-template-columns: 75% 25%; grid-template-rows: 1fr; }
+  #player.layout-grid-4 { grid-template-areas: "grid1 grid2" "grid3 grid4"; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+  .zone { position: relative; overflow: hidden; background: #000; border: 0.5px solid rgba(255,255,255,0.04); }
+  .zone[data-zone="main"] { grid-area: main; }
+  .zone[data-zone="bottom"] { grid-area: bottom; }
+  .zone[data-zone="top"] { grid-area: top; }
+  .zone[data-zone="left"] { grid-area: left; }
+  .zone[data-zone="right"] { grid-area: right; }
+  .zone[data-zone="sidebar"] { grid-area: sidebar; }
+  .zone[data-zone="grid1"] { grid-area: grid1; }
+  .zone[data-zone="grid2"] { grid-area: grid2; }
+  .zone[data-zone="grid3"] { grid-area: grid3; }
+  .zone[data-zone="grid4"] { grid-area: grid4; }
+
+  .zone .zone-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; animation: fadeIn 0.6s ease; }
+  .zone .zone-yt-wrap { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+  .zone .zone-yt-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  .zone .zone-empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: #222; font-family: monospace; font-size: 12px; }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
   #telop-wrap { position: fixed; left: 0; right: 0; height: 52px; background: rgba(0,0,0,0.75); border-top: 2px solid #ff6b35; display: none; align-items: center; overflow: hidden; z-index: 100; }
   #telop-text { white-space: nowrap; color: #fff; font-size: 26px; font-weight: 600; will-change: transform; }
-  #osd { position: fixed; top: 16px; right: 20px; background: rgba(0,0,0,0.6); color: #ff6b35; font-size: 13px; font-family: monospace; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,107,53,0.3); z-index: 200; line-height: 1.6; display: none; }
+  #osd { position: fixed; top: 16px; right: 20px; background: rgba(0,0,0,0.6); color: #ff6b35; font-size: 12px; font-family: monospace; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,107,53,0.3); z-index: 200; line-height: 1.6; display: none; max-width: 320px; white-space: pre-wrap; }
   #loading { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 300; }
   #loading .logo { font-size: 36px; color: #ff6b35; font-weight: 700; letter-spacing: 4px; margin-bottom: 24px; }
   #loading .logo span { color: #fff; }
@@ -37,15 +61,12 @@
   <div class="err-msg" id="error-msg">コンテンツを読み込めませんでした</div>
   <div class="err-sub" id="error-sub">10秒後に再試行します</div>
 </div>
-<div id="player">
-  <video id="media-video" playsinline autoplay muted></video>
-  <img id="media-image" alt="">
-</div>
+<div id="player"></div>
 <div id="telop-wrap"><div id="telop-text"></div></div>
 <div id="osd"></div>
 <script>
 // =============================================================
-//  FireSign Player v0.2.0
+//  FireSign Player v0.3.0 — マルチゾーンレイアウト対応
 //  ★ FIRESIGN_SETTINGS の apiKey だけ書き換えてください
 // =============================================================
 const FIRESIGN_SETTINGS = {
@@ -54,18 +75,42 @@ const FIRESIGN_SETTINGS = {
   reloadInterval: 60
 };
 
+// レイアウトごとのゾーンID一覧
+const LAYOUT_ZONES = {
+  'full':          ['main'],
+  'main-bottom':   ['main', 'bottom'],
+  'main-top':      ['top', 'main'],
+  'split-lr':      ['left', 'right'],
+  'split-tb':      ['top', 'bottom'],
+  'main-sidebar':  ['main', 'sidebar'],
+  'grid-4':        ['grid1', 'grid2', 'grid3', 'grid4']
+};
+
 const FALLBACK_CONFIG = {
+  layout: 'full',
   screenIndex: 0,
   telop: { enabled: true, text: '&#128293; FireSign 起動中...', speed: 60, bgColor: 'rgba(0,0,0,0.75)', textColor: '#ffffff', fontSize: 26, position: 'bottom' },
-  playlist: [
-    { type: 'image', url: 'https://picsum.photos/seed/firesign1/1920/1080', duration: 5 },
-    { type: 'image', url: 'https://picsum.photos/seed/firesign2/1920/1080', duration: 5 }
-  ],
-  loop: true, errorRetry: 10, videoObjectFit: 'contain'
+  zones: {
+    main: {
+      imageDuration: 5,
+      videos: [],
+      fallbackImages: [
+        'https://picsum.photos/seed/firesign1/1920/1080',
+        'https://picsum.photos/seed/firesign2/1920/1080'
+      ]
+    }
+  },
+  loop: true, errorRetry: 10
 };
 
 let CONFIG = null;
+let ZONES = {}; // zoneId -> Zone instance
+let currentLayout = null;
+let ytApiPromise = null;
 
+// =============================================================
+//  Drive helpers
+// =============================================================
 async function fetchConfigFromDrive() {
   const { driveFolderId, apiKey } = FIRESIGN_SETTINGS;
   const q = encodeURIComponent("'" + driveFolderId + "' in parents and name='config.json' and trashed=false");
@@ -78,19 +123,177 @@ async function fetchConfigFromDrive() {
   return await fileRes.json();
 }
 
-const video = document.getElementById('media-video');
-const image = document.getElementById('media-image');
+// フォルダ内の画像を全件取得し、ファイル名でソート
+async function fetchDriveImages() {
+  const { driveFolderId, apiKey } = FIRESIGN_SETTINGS;
+  const q = encodeURIComponent("'" + driveFolderId + "' in parents and trashed=false and mimeType contains 'image/'");
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)&orderBy=name&pageSize=1000&key=' + apiKey);
+  if (!res.ok) throw new Error('Drive API ' + res.status);
+  const data = await res.json();
+  const files = (data.files || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  return files.map(f => ({ id: f.id, name: f.name, url: 'https://drive.google.com/uc?export=download&id=' + f.id }));
+}
+
+// ファイル名が "zoneId_..." で始まるものだけを抽出（大文字小文字無視）
+function imagesForZone(allImages, zoneId) {
+  const prefix = (zoneId + '_').toLowerCase();
+  return allImages.filter(f => f.name.toLowerCase().startsWith(prefix));
+}
+
+// =============================================================
+//  YouTube IFrame API loader
+// =============================================================
+function loadYouTubeAPI() {
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve();
+    const prevReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = function() { if (prevReady) prevReady(); resolve(); };
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  });
+  return ytApiPromise;
+}
+
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([\w-]{11})/,
+    /(?:youtu\.be\/)([\w-]{11})/,
+    /(?:youtube\.com\/embed\/)([\w-]{11})/,
+    /(?:youtube-nocookie\.com\/embed\/)([\w-]{11})/
+  ];
+  for (const p of patterns) { const m = url.match(p); if (m) return m[1]; }
+  return null;
+}
+
+// =============================================================
+//  Zone class — 各ゾーンの再生を独立して管理
+// =============================================================
+class Zone {
+  constructor(id, container) {
+    this.id = id;
+    this.container = container;
+    this.imgEl = container.querySelector('.zone-img');
+    this.ytWrap = container.querySelector('.zone-yt-wrap');
+    this.emptyEl = container.querySelector('.zone-empty');
+    this.playlist = [];
+    this.index = 0;
+    this.imageTimer = null;
+    this.ytPlayer = null;
+    this.ytReady = false;
+    this.currentType = null;
+  }
+
+  setPlaylist(list) {
+    this.playlist = list || [];
+    this.index = 0;
+    this._stop();
+    if (this.playlist.length === 0) { this._showEmpty(); return; }
+    this.emptyEl.style.display = 'none';
+    this.playCurrent();
+  }
+
+  _showEmpty() {
+    this.imgEl.style.display = 'none';
+    this.ytWrap.style.display = 'none';
+    this.emptyEl.style.display = 'flex';
+    this.emptyEl.textContent = 'ZONE:' + this.id + ' — コンテンツなし';
+  }
+
+  _stop() {
+    if (this.imageTimer) { clearTimeout(this.imageTimer); this.imageTimer = null; }
+  }
+
+  playCurrent() {
+    const item = this.playlist[this.index];
+    if (!item) return;
+    if (item.type === 'video') this._playVideo(item);
+    else this._playImage(item);
+  }
+
+  next() {
+    if (this.playlist.length === 0) return;
+    this.index = (this.index + 1) % this.playlist.length;
+    this.playCurrent();
+  }
+
+  _playImage(item) {
+    this._stop();
+    this.ytWrap.style.display = 'none';
+    if (this.ytPlayer) { try { this.ytPlayer.pauseVideo(); } catch(e){} }
+    const img = new Image();
+    img.onload = () => {
+      this.imgEl.src = item.url;
+      this.imgEl.style.display = 'block';
+      this.imgEl.style.animation = 'none'; void this.imgEl.offsetWidth; this.imgEl.style.animation = 'fadeIn 0.6s ease';
+      this.imageTimer = setTimeout(() => this.next(), (item.duration || 5) * 1000);
+    };
+    img.onerror = () => { this.imageTimer = setTimeout(() => this.next(), 1000); };
+    img.src = item.url;
+  }
+
+  async _playVideo(item) {
+    this.imgEl.style.display = 'none';
+    const vid = extractYouTubeId(item.url);
+    if (!vid) { this.imageTimer = setTimeout(() => this.next(), 1000); return; }
+    this.ytWrap.style.display = 'block';
+    await loadYouTubeAPI();
+    if (!this.ytPlayer) {
+      const targetId = 'yt-' + this.id;
+      let target = document.getElementById(targetId);
+      if (!target) { target = document.createElement('div'); target.id = targetId; this.ytWrap.appendChild(target); }
+      this.ytPlayer = new YT.Player(targetId, {
+        videoId: vid,
+        playerVars: { autoplay: 1, mute: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3, fs: 0 },
+        events: {
+          onReady: (e) => { e.target.mute(); e.target.playVideo(); },
+          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) this.next(); },
+          onError: () => { this.next(); }
+        }
+      });
+    } else {
+      this.ytPlayer.loadVideoById(vid);
+      this.ytPlayer.mute();
+    }
+  }
+
+  statusText() {
+    const item = this.playlist[this.index];
+    return this.id + ': ' + (this.index + 1) + '/' + this.playlist.length + ' [' + (item ? item.type : '-') + ']';
+  }
+}
+
+// =============================================================
+//  ゾーン DOM 生成
+// =============================================================
+function buildZoneDOM(layout) {
+  const player = document.getElementById('player');
+  player.className = 'layout-' + layout;
+  player.innerHTML = '';
+  ZONES = {};
+  const zoneIds = LAYOUT_ZONES[layout] || LAYOUT_ZONES['full'];
+  zoneIds.forEach(zid => {
+    const div = document.createElement('div');
+    div.className = 'zone';
+    div.dataset.zone = zid;
+    div.innerHTML =
+      '<img class="zone-img" alt="">' +
+      '<div class="zone-yt-wrap"></div>' +
+      '<div class="zone-empty"></div>';
+    player.appendChild(div);
+    ZONES[zid] = new Zone(zid, div);
+  });
+  currentLayout = layout;
+}
+
+// =============================================================
+//  Telop
+// =============================================================
+let telopAnim = null, telopPos = 0, lastTelopTime = null;
 const telopWrap = document.getElementById('telop-wrap');
 const telopText = document.getElementById('telop-text');
-const loadingEl = document.getElementById('loading');
-const loadingMsg = document.getElementById('loading-msg');
-const errorScreen = document.getElementById('error-screen');
-const errorMsg = document.getElementById('error-msg');
-const errorSub = document.getElementById('error-sub');
-const osd = document.getElementById('osd');
-
-let currentIndex = 0, telopAnim = null, telopPos = 0, lastTelopTime = null;
-let osdVisible = false, retryTimer = null, playing = false;
 
 function initTelop() {
   const t = CONFIG.telop;
@@ -116,11 +319,24 @@ function initTelop() {
   telopAnim = requestAnimationFrame(tick);
 }
 
+// =============================================================
+//  OSD (debug)
+// =============================================================
+const loadingEl = document.getElementById('loading');
+const loadingMsg = document.getElementById('loading-msg');
+const errorScreen = document.getElementById('error-screen');
+const errorMsg = document.getElementById('error-msg');
+const errorSub = document.getElementById('error-sub');
+const osd = document.getElementById('osd');
+let osdVisible = false, retryTimer = null, playing = false;
+
 function updateOSD() {
   if (!osdVisible) return;
-  const item = CONFIG.playlist[currentIndex];
-  osd.innerHTML = '<b>FireSign</b> v0.2.0<br>Screen: #' + (CONFIG.screenIndex||0) + '<br>Item: ' + (currentIndex+1) + ' / ' + CONFIG.playlist.length + '<br>Type: ' + (item?item.type:'') + '<br>Drive: ' + FIRESIGN_SETTINGS.driveFolderId.slice(0,12) + '...';
+  let lines = ['FireSign v0.3.0', 'Layout: ' + (CONFIG ? CONFIG.layout : '-'), 'Screen: #' + (CONFIG ? (CONFIG.screenIndex||0) : 0)];
+  Object.values(ZONES).forEach(z => lines.push(z.statusText()));
+  osd.textContent = lines.join('\n');
 }
+setInterval(updateOSD, 1000);
 
 function showError(msg, retryFn) {
   loadingEl.style.display = 'none';
@@ -135,64 +351,77 @@ function showError(msg, retryFn) {
   }, 1000);
 }
 
-function nextItem() {
-  currentIndex = (currentIndex + 1) % CONFIG.playlist.length;
-  playItem(currentIndex);
+// =============================================================
+//  ゾーンごとのプレイリスト構築
+//  順序: Driveからスキャンした画像（ファイル名順）→ 手動登録したYouTube動画
+// =============================================================
+async function buildZonePlaylists(cfg) {
+  const layout = cfg.layout && LAYOUT_ZONES[cfg.layout] ? cfg.layout : 'full';
+  let allImages = [];
+  try { allImages = await fetchDriveImages(); }
+  catch (e) { console.warn('Drive image scan failed:', e.message); }
+
+  const zoneIds = LAYOUT_ZONES[layout];
+  const result = {};
+  zoneIds.forEach(zid => {
+    const zcfg = (cfg.zones && cfg.zones[zid]) || {};
+    const dur = zcfg.imageDuration || 5;
+    let list = [];
+    if (allImages.length > 0) {
+      list = imagesForZone(allImages, zid).map(f => ({ type: 'image', url: f.url, duration: dur }));
+    } else if (zcfg.fallbackImages) {
+      list = zcfg.fallbackImages.map(u => ({ type: 'image', url: u, duration: dur }));
+    }
+    const videos = (zcfg.videos || []).map(v => ({ type: 'video', url: v.url }));
+    result[zid] = list.concat(videos);
+  });
+  return { layout, playlists: result };
 }
 
-function playItem(index) {
-  const item = CONFIG.playlist[index];
-  if (!item) return;
-  updateOSD();
-  if (item.type === 'video') {
-    image.style.display = 'none';
-    video.style.display = 'block';
-    video.style.objectFit = CONFIG.videoObjectFit || 'contain';
-    video.src = item.url; video.load();
-    video.play().catch(function() { video.muted = true; video.play().catch(function() { nextItem(); }); });
-    video.onended = nextItem;
-    video.onerror = function() { showError('動画読み込み失敗', function() { playItem(index); }); };
-  } else {
-    video.style.display = 'none'; video.pause(); video.src = '';
-    var img = new Image();
-    img.onload = function() {
-      image.src = item.url; image.style.display = 'block';
-      image.style.animation = 'none'; void image.offsetWidth; image.style.animation = 'fadeIn 0.6s ease';
-      setTimeout(nextItem, (item.duration || 5) * 1000);
-    };
-    img.onerror = function() { showError('画像読み込み失敗', function() { playItem(index); }); };
-    img.src = item.url;
-  }
-}
-
-function applyConfigAndPlay(cfg) {
-  CONFIG = cfg;
+function applyConfigAndPlay(cfg, playlists) {
+  const layout = cfg.layout && LAYOUT_ZONES[cfg.layout] ? cfg.layout : 'full';
+  if (layout !== currentLayout) buildZoneDOM(layout);
+  Object.keys(ZONES).forEach(zid => ZONES[zid].setPlaylist(playlists[zid] || []));
   loadingEl.style.display = 'none';
-  if (!playing) { playing = true; initTelop(); playItem(0); }
-  else initTelop();
+  initTelop();
+  playing = true;
 }
 
 async function loadAndStart() {
   loadingMsg.textContent = 'Google Drive から config.json を読み込み中...';
+  let cfg;
   try {
-    applyConfigAndPlay(await fetchConfigFromDrive());
-  } catch(e) {
-    console.warn('Drive load failed:', e.message);
+    cfg = await fetchConfigFromDrive();
+  } catch (e) {
+    console.warn('Drive config load failed:', e.message);
     loadingMsg.textContent = 'フォールバック設定で起動...';
-    setTimeout(function() { applyConfigAndPlay(FALLBACK_CONFIG); }, 1000);
+    cfg = FALLBACK_CONFIG;
   }
+  CONFIG = cfg;
+  loadingMsg.textContent = 'コンテンツをスキャン中...';
+  const { layout, playlists } = await buildZonePlaylists(cfg);
+  cfg.layout = layout;
+  applyConfigAndPlay(cfg, playlists);
+
   if (FIRESIGN_SETTINGS.reloadInterval > 0) {
     setInterval(async function() {
-      try { const cfg = await fetchConfigFromDrive(); CONFIG = cfg; initTelop(); }
-      catch(e) { console.warn('reload failed:', e.message); }
+      try {
+        const newCfg = await fetchConfigFromDrive();
+        CONFIG = newCfg;
+        const built = await buildZonePlaylists(newCfg);
+        newCfg.layout = built.layout;
+        applyConfigAndPlay(newCfg, built.playlists);
+      } catch (e) { console.warn('reload failed:', e.message); }
     }, FIRESIGN_SETTINGS.reloadInterval * 1000);
   }
 }
 
+// =============================================================
+//  Keyboard shortcuts (debug / manual control)
+// =============================================================
 document.addEventListener('keydown', function(e) {
   if (e.key==='d'||e.key==='D') { osdVisible=!osdVisible; osd.style.display=osdVisible?'block':'none'; updateOSD(); }
-  else if (e.key==='ArrowRight') { if(retryTimer)clearInterval(retryTimer); errorScreen.style.display='none'; nextItem(); }
-  else if (e.key==='ArrowLeft') { currentIndex=Math.max(0,currentIndex-2); nextItem(); }
+  else if (e.key==='ArrowRight') { if(retryTimer)clearInterval(retryTimer); errorScreen.style.display='none'; Object.values(ZONES).forEach(z=>z.next()); }
   else if (e.key==='t'||e.key==='T') { telopWrap.style.display=telopWrap.style.display==='none'?'flex':'none'; }
   else if (e.key==='f'||e.key==='F') { if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen(); }
   else if (e.key==='r'||e.key==='R') { loadAndStart(); }
