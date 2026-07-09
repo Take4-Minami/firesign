@@ -30,8 +30,7 @@
   .zone[data-zone="grid4"] { grid-area: grid4; }
 
   .zone .zone-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; animation: fadeIn 0.6s ease; }
-  .zone .zone-yt-wrap { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
-  .zone .zone-yt-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  .zone .zone-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; background: #000; }
   .zone .zone-empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: #222; font-family: monospace; font-size: 12px; }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
 
@@ -66,7 +65,7 @@
 <div id="osd"></div>
 <script>
 // =============================================================
-//  FireSign Player v0.3.0 — マルチゾーンレイアウト対応
+//  FireSign Player v0.5.0 — マルチゾーンレイアウト対応（画像・動画ともDrive一本化）
 //  ★ FIRESIGN_SETTINGS の apiKey だけ書き換えてください
 // =============================================================
 const FIRESIGN_SETTINGS = {
@@ -93,7 +92,6 @@ const FALLBACK_CONFIG = {
   zones: {
     main: {
       imageDuration: 5,
-      videos: [],
       fallbackImages: [
         'https://picsum.photos/seed/firesign1/1920/1080',
         'https://picsum.photos/seed/firesign2/1920/1080'
@@ -106,7 +104,6 @@ const FALLBACK_CONFIG = {
 let CONFIG = null;
 let ZONES = {}; // zoneId -> Zone instance
 let currentLayout = null;
-let ytApiPromise = null;
 
 // =============================================================
 //  Drive helpers
@@ -123,67 +120,72 @@ async function fetchConfigFromDrive() {
   return await fileRes.json();
 }
 
-// フォルダ内の画像を全件取得し、ファイル名でソート
-async function fetchDriveImages() {
-  const { driveFolderId, apiKey } = FIRESIGN_SETTINGS;
-  const q = encodeURIComponent("'" + driveFolderId + "' in parents and trashed=false and mimeType contains 'image/'");
-  const res = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)&orderBy=name&pageSize=1000&key=' + apiKey);
+// Drive上のサブフォルダを名前で検索してIDを返す（見つからなければnull）
+async function findSubfolder(parentId, name) {
+  const { apiKey } = FIRESIGN_SETTINGS;
+  const q = encodeURIComponent(
+    "'" + parentId + "' in parents and trashed=false and mimeType='application/vnd.google-apps.folder' and name='" + name + "'"
+  );
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)&key=' + apiKey);
+  if (!res.ok) throw new Error('Drive API ' + res.status);
+  const data = await res.json();
+  if (!data.files || data.files.length === 0) return null;
+  return data.files[0].id;
+}
+
+// フォルダID内の画像・動画を全件取得し、ファイル名でソート
+async function listContentInFolder(folderId) {
+  const { apiKey } = FIRESIGN_SETTINGS;
+  const q = encodeURIComponent(
+    "'" + folderId + "' in parents and trashed=false and (mimeType contains 'image/' or mimeType contains 'video/')"
+  );
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name,mimeType)&orderBy=name&pageSize=1000&key=' + apiKey);
   if (!res.ok) throw new Error('Drive API ' + res.status);
   const data = await res.json();
   const files = (data.files || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-  return files.map(f => ({ id: f.id, name: f.name, url: 'https://drive.google.com/uc?export=download&id=' + f.id }));
+  // alt=media 経由の直リンクを使用（uc?export=download は大容量ファイルでウイルススキャン確認画面に化けることがあるため）
+  return files.map(f => ({
+    id: f.id,
+    name: f.name,
+    type: f.mimeType && f.mimeType.indexOf('video/') === 0 ? 'video' : 'image',
+    url: 'https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media&key=' + apiKey
+  }));
 }
 
-// ファイル名が "zoneId_..." で始まるものだけを抽出（大文字小文字無視）
-function imagesForZone(allImages, zoneId) {
-  const prefix = (zoneId + '_').toLowerCase();
-  return allImages.filter(f => f.name.toLowerCase().startsWith(prefix));
+// firesignフォルダ内の "content" フォルダIDをキャッシュして返す
+let contentFolderIdCache = undefined; // undefined=未取得, null=存在しない
+async function getContentFolderId() {
+  if (contentFolderIdCache !== undefined) return contentFolderIdCache;
+  contentFolderIdCache = await findSubfolder(FIRESIGN_SETTINGS.driveFolderId, 'content');
+  return contentFolderIdCache;
 }
 
-// =============================================================
-//  YouTube IFrame API loader
-// =============================================================
-function loadYouTubeAPI() {
-  if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise((resolve) => {
-    if (window.YT && window.YT.Player) return resolve();
-    const prevReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = function() { if (prevReady) prevReady(); resolve(); };
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
-  });
-  return ytApiPromise;
-}
-
-function extractYouTubeId(url) {
-  if (!url) return null;
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=)([\w-]{11})/,
-    /(?:youtu\.be\/)([\w-]{11})/,
-    /(?:youtube\.com\/embed\/)([\w-]{11})/,
-    /(?:youtube-nocookie\.com\/embed\/)([\w-]{11})/
-  ];
-  for (const p of patterns) { const m = url.match(p); if (m) return m[1]; }
-  return null;
+// 指定ゾーンのコンテンツ一覧を取得： firesign/content/<zoneId>/ の中身をファイル名順で返す（画像・動画混在可）
+async function fetchZoneContent(zoneId) {
+  const contentFolderId = await getContentFolderId();
+  if (!contentFolderId) return [];
+  const zoneFolderId = await findSubfolder(contentFolderId, zoneId);
+  if (!zoneFolderId) return [];
+  return await listContentInFolder(zoneFolderId);
 }
 
 // =============================================================
-//  Zone class — 各ゾーンの再生を独立して管理
+//  Zone class — 各ゾーンの再生を独立して管理（画像・動画ともDriveから直接再生）
 // =============================================================
 class Zone {
   constructor(id, container) {
     this.id = id;
     this.container = container;
     this.imgEl = container.querySelector('.zone-img');
-    this.ytWrap = container.querySelector('.zone-yt-wrap');
+    this.videoEl = container.querySelector('.zone-video');
     this.emptyEl = container.querySelector('.zone-empty');
     this.playlist = [];
     this.index = 0;
     this.imageTimer = null;
-    this.ytPlayer = null;
-    this.ytReady = false;
     this.currentType = null;
+
+    this.videoEl.addEventListener('ended', () => this.next());
+    this.videoEl.addEventListener('error', () => { this.imageTimer = setTimeout(() => this.next(), 1000); });
   }
 
   setPlaylist(list) {
@@ -197,7 +199,8 @@ class Zone {
 
   _showEmpty() {
     this.imgEl.style.display = 'none';
-    this.ytWrap.style.display = 'none';
+    this.videoEl.style.display = 'none';
+    this.videoEl.pause();
     this.emptyEl.style.display = 'flex';
     this.emptyEl.textContent = 'ZONE:' + this.id + ' — コンテンツなし';
   }
@@ -221,8 +224,8 @@ class Zone {
 
   _playImage(item) {
     this._stop();
-    this.ytWrap.style.display = 'none';
-    if (this.ytPlayer) { try { this.ytPlayer.pauseVideo(); } catch(e){} }
+    this.videoEl.style.display = 'none';
+    this.videoEl.pause();
     const img = new Image();
     img.onload = () => {
       this.imgEl.src = item.url;
@@ -234,29 +237,14 @@ class Zone {
     img.src = item.url;
   }
 
-  async _playVideo(item) {
+  _playVideo(item) {
+    this._stop();
     this.imgEl.style.display = 'none';
-    const vid = extractYouTubeId(item.url);
-    if (!vid) { this.imageTimer = setTimeout(() => this.next(), 1000); return; }
-    this.ytWrap.style.display = 'block';
-    await loadYouTubeAPI();
-    if (!this.ytPlayer) {
-      const targetId = 'yt-' + this.id;
-      let target = document.getElementById(targetId);
-      if (!target) { target = document.createElement('div'); target.id = targetId; this.ytWrap.appendChild(target); }
-      this.ytPlayer = new YT.Player(targetId, {
-        videoId: vid,
-        playerVars: { autoplay: 1, mute: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3, fs: 0 },
-        events: {
-          onReady: (e) => { e.target.mute(); e.target.playVideo(); },
-          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) this.next(); },
-          onError: () => { this.next(); }
-        }
-      });
-    } else {
-      this.ytPlayer.loadVideoById(vid);
-      this.ytPlayer.mute();
-    }
+    this.videoEl.style.display = 'block';
+    this.videoEl.muted = true;
+    this.videoEl.src = item.url;
+    this.videoEl.load();
+    this.videoEl.play().catch(() => { this.imageTimer = setTimeout(() => this.next(), 1000); });
   }
 
   statusText() {
@@ -280,7 +268,7 @@ function buildZoneDOM(layout) {
     div.dataset.zone = zid;
     div.innerHTML =
       '<img class="zone-img" alt="">' +
-      '<div class="zone-yt-wrap"></div>' +
+      '<video class="zone-video" playsinline autoplay muted></video>' +
       '<div class="zone-empty"></div>';
     player.appendChild(div);
     ZONES[zid] = new Zone(zid, div);
@@ -332,7 +320,7 @@ let osdVisible = false, retryTimer = null, playing = false;
 
 function updateOSD() {
   if (!osdVisible) return;
-  let lines = ['FireSign v0.3.0', 'Layout: ' + (CONFIG ? CONFIG.layout : '-'), 'Screen: #' + (CONFIG ? (CONFIG.screenIndex||0) : 0)];
+  let lines = ['FireSign v0.5.0', 'Layout: ' + (CONFIG ? CONFIG.layout : '-'), 'Screen: #' + (CONFIG ? (CONFIG.screenIndex||0) : 0)];
   Object.values(ZONES).forEach(z => lines.push(z.statusText()));
   osd.textContent = lines.join('\n');
 }
@@ -353,28 +341,30 @@ function showError(msg, retryFn) {
 
 // =============================================================
 //  ゾーンごとのプレイリスト構築
-//  順序: Driveからスキャンした画像（ファイル名順）→ 手動登録したYouTube動画
+//  firesign/content/<zoneId>/ 内の画像・動画をファイル名順にそのまま再生する
 // =============================================================
 async function buildZonePlaylists(cfg) {
   const layout = cfg.layout && LAYOUT_ZONES[cfg.layout] ? cfg.layout : 'full';
-  let allImages = [];
-  try { allImages = await fetchDriveImages(); }
-  catch (e) { console.warn('Drive image scan failed:', e.message); }
-
   const zoneIds = LAYOUT_ZONES[layout];
+
   const result = {};
-  zoneIds.forEach(zid => {
+  await Promise.all(zoneIds.map(async (zid) => {
     const zcfg = (cfg.zones && cfg.zones[zid]) || {};
     const dur = zcfg.imageDuration || 5;
     let list = [];
-    if (allImages.length > 0) {
-      list = imagesForZone(allImages, zid).map(f => ({ type: 'image', url: f.url, duration: dur }));
-    } else if (zcfg.fallbackImages) {
-      list = zcfg.fallbackImages.map(u => ({ type: 'image', url: u, duration: dur }));
+    try {
+      const content = await fetchZoneContent(zid);
+      if (content.length > 0) {
+        list = content.map(f => ({ type: f.type, url: f.url, duration: dur }));
+      } else if (zcfg.fallbackImages) {
+        list = zcfg.fallbackImages.map(u => ({ type: 'image', url: u, duration: dur }));
+      }
+    } catch (e) {
+      console.warn('Drive content scan failed for zone ' + zid + ':', e.message);
+      if (zcfg.fallbackImages) list = zcfg.fallbackImages.map(u => ({ type: 'image', url: u, duration: dur }));
     }
-    const videos = (zcfg.videos || []).map(v => ({ type: 'video', url: v.url }));
-    result[zid] = list.concat(videos);
-  });
+    result[zid] = list;
+  }));
   return { layout, playlists: result };
 }
 
