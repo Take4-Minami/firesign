@@ -152,7 +152,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <div class="header">
   <div class="logo">&#128293;Fire<span>Sign</span></div>
-  <div class="header-sub">設定管理画面 v2.2</div>
+  <div class="header-sub">設定管理画面 v2.3</div>
   <div class="header-right">
     <span class="auth-badge signed-out" id="authBadge"><span class="auth-dot"></span><span id="authBadgeText">未ログイン</span></span>
     <button class="btn btn-ghost btn-sm" id="googleSignInBtn" onclick="signInWithGoogle()">&#128100; Googleでログイン</button>
@@ -176,7 +176,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <b><span class="step">2</span></b> &nbsp;画像・動画（mp4）は Google Drive の firesign フォルダ内の <b>content/ゾーンID/</b> フォルダ（例: <code style="color:var(--orange)">content/main/</code>）にアップロードすると自動的にファイル名順で再生されます（種類を問わず同じ場所でOK）<br>
         <b><span class="step">3</span></b> &nbsp;この画面では、レイアウトと画像の表示秒数・テロップだけ設定します<br>
         <b><span class="step">4</span></b> &nbsp;「<b>config.json を保存</b>」→ ダウンロードした config.json を Drive の firesign フォルダに上書きアップロード<br>
-        <b><span class="step">5</span></b> &nbsp;プレーヤーが自動的に新しい設定を読み込みます（最大60秒）
+        <b><span class="step">5</span></b> &nbsp;プレーヤーが自動的に新しい設定を読み込みます（最大20秒。Googleログイン済みなら手順4は「☁ Driveに保存」ワンクリックでOK）
       </div>
     </div>
   </div>
@@ -274,7 +274,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <script>
 // =============================================================
-//  FireSign Admin  v2.2 — マルチゾーンレイアウト対応（画像・動画ともDrive自動スキャン、Drive直接アップロード対応）
+//  FireSign Admin  v2.3 — マルチゾーンレイアウト対応（画像・動画ともDrive自動スキャン、Googleログイン+Drive直接アップロード対応）
 //  ★ Drive設定（プレーヤーと同じ値を入れてください）
 // =============================================================
 const DRIVE_SETTINGS = {
