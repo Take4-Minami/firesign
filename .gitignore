@@ -1,0 +1,20 @@
+# === 機密：公開リポジトリに絶対上げない ===
+*API_Key*.txt
+*APIキー*.txt
+*OAuthクライアントID*.txt
+*OAuth*ID*.txt
+フォルダID.txt
+**/local.properties
+*.keystore
+*.jks
+
+# === ビルド生成物・IDE ===
+**/.gradle/
+**/build/
+**/.idea/
+*.apk
+
+# === OS/同期の副産物 ===
+desktop.ini
+.DS_Store
+Thumbs.db
